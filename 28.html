@@ -1,0 +1,180 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Interactive To‑Do List</title>
+  <style>
+    :root{--bg:#f6f8fa;--card:#ffffff;--accent:#4f46e5;--muted:#667085;--success:#10b981}
+    *{box-sizing:border-box}
+    body{font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; background:var(--bg); margin:0; padding:40px; display:flex; align-items:flex-start; justify-content:center; min-height:100vh}
+    .card{width:100%; max-width:720px; background:var(--card); border-radius:12px; padding:24px; box-shadow:0 6px 20px rgba(16,24,40,0.06)}
+    h1{margin:0 0 8px; font-size:20px}
+    p.lead{margin:0 0 16px; color:var(--muted)}
+
+    .input-row{display:flex; gap:8px}
+    .input-row input{flex:1; padding:12px 14px; border:1px solid #e6e9ef; border-radius:8px; font-size:14px}
+    .input-row button{padding:12px 16px; border:0; background:var(--accent); color:#fff; border-radius:8px; cursor:pointer}
+    .input-row button:active{transform:translateY(1px)}
+
+    .controls{display:flex; gap:8px; margin-top:14px; align-items:center}
+    .filters{display:flex; gap:8px}
+    .filters button{padding:8px 12px; border-radius:8px; border:1px solid #ececf2; background:transparent; cursor:pointer}
+    .filters button.active{background:#f1f0ff; border-color:transparent}
+
+    .todo-list{margin-top:18px; list-style:none; padding:0}
+    .todo-item{display:flex; align-items:center; gap:12px; padding:12px; border-radius:8px; border:1px solid #f0f1f6; margin-bottom:8px}
+    .todo-item.completed{opacity:.6; text-decoration:line-through; background:linear-gradient(90deg, #f8fafc, #ffffff)}
+    .todo-item .title{flex:1}
+    .todo-item button.delete{background:transparent; border:0; cursor:pointer; font-weight:600; color:#ef4444}
+
+    .meta{margin-top:12px; color:var(--muted); font-size:13px; display:flex; justify-content:space-between; align-items:center}
+
+    .small{font-size:13px}
+
+    @media (max-width:520px){body{padding:18px}.card{padding:16px}}
+  </style>
+</head>
+<body>
+  <main class="card" role="main">
+    <h1>Interactive To‑Do List</h1>
+    <p class="lead">Add items, mark complete, delete, and save automatically (localStorage).</p>
+
+    <div class="input-row" aria-label="Add todo">
+      <input id="todoInput" placeholder="Type a task and press Enter or click Add" aria-label="New todo input">
+      <button id="addBtn">Add</button>
+    </div>
+
+    <div class="controls">
+      <div class="filters" role="tablist">
+        <button data-filter="all" class="active">All</button>
+        <button data-filter="active">Active</button>
+        <button data-filter="completed">Completed</button>
+      </div>
+      <div style="margin-left:auto; display:flex; gap:8px; align-items:center">
+        <button id="clearCompleted">Clear completed</button>
+        <button id="exportBtn">Export JSON</button>
+      </div>
+    </div>
+
+    <ul id="todoList" class="todo-list" aria-live="polite"></ul>
+
+    <div class="meta">
+      <div class="small" id="count">0 items</div>
+      <div class="small">Tip: press Enter to add</div>
+    </div>
+  </main>
+
+  <script>
+    // Simple To‑Do with persistence and filters
+    const STORAGE_KEY = 'todo_demo_v1'
+    let todos = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
+    let filter = 'all'
+
+    // DOM refs
+    const todoInput = document.getElementById('todoInput')
+    const addBtn = document.getElementById('addBtn')
+    const todoList = document.getElementById('todoList')
+    const countEl = document.getElementById('count')
+    const clearCompletedBtn = document.getElementById('clearCompleted')
+    const exportBtn = document.getElementById('exportBtn')
+    const filterButtons = document.querySelectorAll('.filters button')
+
+    // Helpers
+    function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(todos)) }
+    function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8) }
+
+    function addTodo(text){
+      const t = text.trim()
+      if(!t) return
+      todos.unshift({ id: uid(), text: t, completed: false, created: new Date().toISOString() })
+      save()
+      render()
+      todoInput.value = ''
+      todoInput.focus()
+    }
+
+    function toggleComplete(id){
+      todos = todos.map(td => td.id === id ? {...td, completed: !td.completed} : td)
+      save(); render()
+    }
+
+    function deleteTodo(id){
+      todos = todos.filter(td => td.id !== id)
+      save(); render()
+    }
+
+    function clearCompleted(){
+      todos = todos.filter(td => !td.completed)
+      save(); render()
+    }
+
+    function exportJSON(){
+      const blob = new Blob([JSON.stringify(todos, null, 2)], {type:'application/json'})
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = 'todos.json'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url)
+    }
+
+    function setFilter(f){ filter = f; filterButtons.forEach(b => b.classList.toggle('active', b.dataset.filter===f)); render() }
+
+    function render(){
+      // filter
+      const list = todos.filter(td => {
+        if(filter==='all') return true
+        if(filter==='active') return !td.completed
+        return td.completed
+      })
+
+      todoList.innerHTML = ''
+      if(list.length===0){
+        const li = document.createElement('li'); li.className='todo-item'; li.innerHTML='<div class="title">No items</div>'
+        todoList.appendChild(li)
+      } else {
+        list.forEach(td => {
+          const li = document.createElement('li')
+          li.className = 'todo-item' + (td.completed ? ' completed' : '')
+
+          const checkbox = document.createElement('input')
+          checkbox.type = 'checkbox'
+          checkbox.checked = td.completed
+          checkbox.addEventListener('change', () => toggleComplete(td.id))
+
+          const title = document.createElement('div')
+          title.className = 'title'
+          title.textContent = td.text
+
+          const del = document.createElement('button')
+          del.className = 'delete'
+          del.setAttribute('aria-label', 'Delete todo')
+          del.textContent = 'Delete'
+          del.addEventListener('click', () => deleteTodo(td.id))
+
+          li.appendChild(checkbox)
+          li.appendChild(title)
+          li.appendChild(del)
+
+          todoList.appendChild(li)
+        })
+      }
+
+      const remaining = todos.filter(t => !t.completed).length
+      countEl.textContent = remaining + (remaining===1 ? ' item left' : ' items left')
+    }
+
+    // Events
+    addBtn.addEventListener('click', () => addTodo(todoInput.value))
+    todoInput.addEventListener('keydown', (e) => { if(e.key==='Enter') addTodo(todoInput.value) })
+    clearCompletedBtn.addEventListener('click', () => { clearCompleted() })
+    exportBtn.addEventListener('click', () => exportJSON())
+    filterButtons.forEach(b => b.addEventListener('click', () => setFilter(b.dataset.filter)))
+
+    // initial render
+    render()
+
+    // expose for debugging (optional)
+    window._TODOS = {get: () => todos, save, addTodo}
+  </script>
+</body>
+</html>
